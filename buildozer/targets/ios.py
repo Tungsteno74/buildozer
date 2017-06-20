@@ -20,7 +20,7 @@ $ipas = glob('*.ipa');
 $provisioningProfiles = glob('*.mobileprovision');
 $plists = glob('*.plist');
 
-$sr = stristr( $_SERVER['SCRIPT_URI'], '.php' ) === false ? 
+$sr = stristr( $_SERVER['SCRIPT_URI'], '.php' ) === false ?
     $_SERVER['SCRIPT_URI'] : dirname($_SERVER['SCRIPT_URI']) . '/';
 $provisioningProfile = $sr . $provisioningProfiles[0];
 $ipa = $sr . $ipas[0];
@@ -28,8 +28,8 @@ $itmsUrl = urlencode( $sr . 'index.php?plist=' . str_replace( '.plist', '', $pli
 
 
 if ($_GET['plist']) {
-    $plist = file_get_contents( dirname(__FILE__) 
-        . DIRECTORY_SEPARATOR 
+    $plist = file_get_contents( dirname(__FILE__)
+        . DIRECTORY_SEPARATOR
         . preg_replace( '/![A-Za-z0-9-_]/i', '', $_GET['plist']) . '.plist' );
     $plist = str_replace('_URL_', $ipa, $plist);
     header('content-type: application/xml');
@@ -59,6 +59,7 @@ li { padding: 1em; }
 '''
 
 class TargetIos(Target):
+    targetname = "ios"
 
     def check_requirements(self):
         checkbin = self.buildozer.checkbin
@@ -222,16 +223,42 @@ class TargetIos(Target):
         elif ioscodesign[0] not in ('"', "'"):
             ioscodesign = '"{}"'.format(ioscodesign)
 
-        ipa = join(self.buildozer.bin_dir, '{}-{}.ipa'.format(
+        intermediate_dir = join(self.ios_dir, '{}-{}.intermediates'.format(app_name, version))
+        xcarchive = join(intermediate_dir, '{}-{}.xcarchive'.format(
             app_name, version))
+        ipa_name = '{}-{}.ipa'.format(app_name, version)
+        ipa_tmp = join(intermediate_dir, ipa_name)
+        ipa = join(self.buildozer.bin_dir, ipa_name)
+        build_dir = join(self.ios_dir, '{}-ios'.format(app_name.lower()))
+
+        self.buildozer.rmdir(intermediate_dir)
+
+        self.buildozer.info('Creating archive...')
         self.buildozer.cmd((
-            '/usr/bin/xcrun '
-            '-sdk iphoneos PackageApplication {ios_app_dir} '
-            '-o {ipa} --sign {ioscodesign} --embed '
-            '{ios_app_dir}/embedded.mobileprovision').format(
-                ioscodesign=ioscodesign, ios_app_dir=ios_app_dir,
-                mode=mode, ipa=ipa),
-                cwd=self.ios_dir)
+                '/usr/bin/xcodebuild'
+                ' -alltargets'
+                ' -configuration {mode}'
+                ' -scheme {scheme}'
+                ' -archivePath "{xcarchive}"'
+                ' archive'
+                ' ENABLE_BITCODE=NO'
+            ).format(mode=mode, xcarchive=xcarchive, scheme=app_name.lower()),
+            cwd=build_dir)
+
+        self.buildozer.info('Creating IPA...')
+        self.buildozer.cmd((
+                '/usr/bin/xcodebuild'
+                ' -exportArchive'
+                ' -exportFormat IPA'
+                ' -archivePath "{xcarchive}"'
+                ' -exportPath "{ipa}"'
+                ' CODE_SIGN_IDENTITY={ioscodesign}'
+                ' ENABLE_BITCODE=NO'
+            ).format(xcarchive=xcarchive, ipa=ipa_tmp, ioscodesign=ioscodesign),
+            cwd=build_dir)
+
+        self.buildozer.info('Moving IPA to bin...')
+        self.buildozer.file_rename(ipa_tmp, ipa)
 
         self.buildozer.info('iOS packaging done!')
         self.buildozer.info('IPA {0} available in the bin directory'.format(

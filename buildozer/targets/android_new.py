@@ -1,31 +1,36 @@
 # coding=utf-8
 '''
-Android target, based on python-for-android project (new toolchain)
+Android target, based on python-for-android project
 '''
+
 import sys
 
-from buildozer.targets.android import TargetAndroid
 from buildozer import USE_COLOR
+from buildozer.targets.android import TargetAndroid
 from os.path import join, expanduser, realpath
 
 
 class TargetAndroidNew(TargetAndroid):
-    targetname = 'android_new'
-    p4a_branch = "master"
+    targetname = 'android'
+    p4a_branch = "stable"
     p4a_directory = "python-for-android-master"
-    p4a_apk_cmd = "apk --bootstrap="
+    p4a_apk_cmd = "apk --debug --bootstrap="
     extra_p4a_args = ''
 
-    def __init__(self, buildozer):
-        super(TargetAndroidNew, self).__init__(buildozer)
+    def __init__(self, *args, **kwargs):
+        super(TargetAndroidNew, self).__init__(*args, **kwargs)
         self._build_dir = join(self.buildozer.platform_dir, 'build')
-        self._p4a_cmd = ('python -m pythonforandroid.toolchain ')
+        executable = sys.executable or 'python'
+        self._p4a_cmd = '{} -m pythonforandroid.toolchain '.format(executable)
         self._p4a_bootstrap = self.buildozer.config.getdefault(
-            'app', 'android.bootstrap', 'sdl2')
+            'app', 'p4a.bootstrap', 'sdl2')
         self.p4a_apk_cmd += self._p4a_bootstrap
         color = 'always' if USE_COLOR else 'never'
         self.extra_p4a_args = ' --color={} --storage-dir={}'.format(
             color, self._build_dir)
+        hook = self.buildozer.config.getdefault("app", "p4a.hook", None)
+        if hook is not None:
+            self.extra_p4a_args += ' --hook={}'.format(realpath(hook))
 
     def _p4a(self, cmd, **kwargs):
         if not hasattr(self, "pa_dir"):
@@ -63,13 +68,10 @@ class TargetAndroidNew(TargetAndroid):
             options.append('--local-recipes')
             options.append(local_recipes)
         available_modules = self._p4a(
-            "create --dist_name={} --bootstrap={} --requirements={} --arch armeabi-v7a {}".format(
-                 dist_name, self._p4a_bootstrap, requirements, " ".join(options)),
+            "create --dist_name={} --bootstrap={} --requirements={} --arch {} {}".format(
+                 dist_name, self._p4a_bootstrap, requirements,
+                 self.buildozer.config.getdefault('app', 'android.arch', "armeabi-v7a"), " ".join(options)),
             get_stdout=True)[0]
-
-    def _update_libraries_references(self, dist_dir):
-        # UNSUPPORTED YET
-        pass
 
     def get_dist_dir(self, dist_name):
         return join(self._build_dir, 'dists', dist_name)
@@ -89,14 +91,23 @@ class TargetAndroidNew(TargetAndroid):
                 continue
             elif option == "release":
                 cmd.append("--release")
+                cmd.append("--sign")
                 continue
             if option == "--window":
                 cmd.append("--window")
             elif option == "--sdk":
                 cmd.append("--android_api")
                 cmd.extend(values)
+                cmd.append("--sdk")
+                cmd.extend(values)
             else:
                 cmd.extend(args)
+
+        # support for presplash background color
+        presplash_color = self.buildozer.config.getdefault('app', 'android.presplash_color', None)
+        if presplash_color:
+            cmd.append('--presplash-color')
+            cmd.append("'{}'".format(presplash_color))
 
         # support for services
         services = self.buildozer.config.getlist('app', 'services', [])
@@ -114,14 +125,29 @@ class TargetAndroidNew(TargetAndroid):
             cmd.append(local_recipes)
 
         # support for blacklist/whitelist filename
-        whitelist_src = self.buildozer.config.getdefault('app', 'android.p4a_whitelist_src', None)
-        blacklist_src = self.buildozer.config.getdefault('app', 'android.p4a_blacklist_src', None)
+        whitelist_src = self.buildozer.config.getdefault('app', 'android.whitelist_src', None)
+        blacklist_src = self.buildozer.config.getdefault('app', 'android.blacklist_src', None)
         if whitelist_src:
             cmd.append('--whitelist')
             cmd.append(realpath(whitelist_src))
         if blacklist_src:
             cmd.append('--blacklist')
             cmd.append(realpath(blacklist_src))
+
+        # support for aars
+        aars = self.buildozer.config.getlist('app', 'android.add_aars', [])
+        for aar in aars:
+            cmd.append('--add-aar')
+            cmd.append(realpath(aar))
+
+        # support for gradle dependencies
+        gradle_dependencies = self.buildozer.config.getlist('app', 'android.gradle_dependencies', [])
+        for gradle_dependency in gradle_dependencies:
+            cmd.append('--depend')
+            cmd.append(gradle_dependency)
+
+        cmd.append('--arch')
+        cmd.append(self.buildozer.config.getdefault('app', 'android.arch', "armeabi-v7a"))
 
         cmd = " ".join(cmd)
         self._p4a(cmd)

@@ -28,6 +28,7 @@ from buildozer.libs.version import parse
 
 
 class TargetOSX(Target):
+    targetname = "osx"
 
     def ensure_sdk(self):
         self.buildozer.info('Check if kivy-sdk-packager exists')
@@ -47,53 +48,43 @@ class TargetOSX(Target):
         check_call(('unzip', 'master.zip'), cwd=platdir)
         check_call(('rm', 'master.zip'), cwd=platdir)
 
-    def download_kivy(self, cwd, kivy='Kivy2'):
-        self.buildozer.info('Downloading kivy...')
-        if not exists(cwd+'/'+kivy+'.7z'):
+    def download_kivy(self, cwd, py_branch=2):
+        current_kivy_vers = self.buildozer.config.get('app', 'osx.kivy_version')
+
+        if exists('/Applications/Kivy{}.app'.format(py_branch)):
+            self.buildozer.info('Kivy found in Applications dir...')
             check_call(
-                ('curl', '-O', '-L',
-                'http://kivy.org/downloads/tests/{}.7z'.format(kivy)),
-                cwd=cwd)
-        if not exists(cwd+'/Keka.app'):
-            if exists('/Applications/Keka.app'):
+                ('cp', '-a', '/Applications/Kivy{}.app'.format(py_branch),
+                'Kivy.app'), cwd=cwd)
+
+        else:
+            if not exists(join(cwd, 'Kivy{}.dmg'.format(py_branch))):
+                self.buildozer.info('Downloading kivy...')
                 check_call(
-                    ('cp', '-a', '/Applications/Keka.app', './Keka.app'),
-                     cwd=cwd)
-            else:
-                check_call(('curl', '-o',
-                    'http://www.kekaosx.com/release/Keka-1.0.4-intel.dmg'),
+                    ('curl', '-L', '-o', 'Kivy{}.dmg'.format(py_branch),
+                    'http://kivy.org/downloads/{}/Kivy-{}-osx-python{}.dmg'\
+                    .format(current_kivy_vers, current_kivy_vers, py_branch)),
                     cwd=cwd)
-                check_call(
-                    ('hdiutil', 'attach', 'Keka-1.0.4-intel.dmg'),
-                    cwd=cwd)
-                check_call(
-                    ('cp', '-a','/Volumes/Keka/Keka.app',
-                    './Keka.app'), cwd=cwd)
-                check_call(('hdutil', 'detach', '/Volumes/Keka'))
-        check_call(
-            ('Keka.app/Contents/Resources/keka7z',
-            'x', '{}.7z'.format(kivy)), cwd=cwd)
-        check_call(('rm', '-rf', '{}.7z'.format('Kivy2')), cwd=cwd)
-        check_call(('mv', '{}.app'.format(kivy), 'Kivy.app'),cwd=cwd)
+
+            self.buildozer.info('Extracting and installing Kivy...')
+            check_call(('hdiutil', 'attach', cwd + '/Kivy{}.dmg'.format(py_branch)))
+            check_call(('cp', '-a', '/Volumes/Kivy/Kivy.app', './Kivy.app'), cwd=cwd)
 
     def ensure_kivyapp(self):
         self.buildozer.info('check if Kivy.app exists in local dir')
-        kivy_app_dir = join(
-            self.buildozer.platform_dir,
-            'kivy-sdk-packager-master', 'osx')
+        kivy_app_dir = join(self.buildozer.platform_dir, 'kivy-sdk-packager-master', 'osx')
+
+        py_branch = self.buildozer.config.get('app', 'osx.python_version')
+
+        if not int(py_branch) in (2, 3):
+            self.buildozer.error('incompatible python version... aborting')
+            sys.exit(1)
+
         if exists(join(kivy_app_dir, 'Kivy.app')):
-                self.buildozer.info('Kivy.app found at ' + kivy_app_dir)
-                return
-        # check if Kivy.app exists in /Applications
-        if not exists('/Applications/Kivy.app'):
-            self.download_kivy(kivy_app_dir)
-            return
+            self.buildozer.info('Kivy.app found at ' + kivy_app_dir)
         else:
-            self.buildozer.info('Kivy.app found at /Applications/Kivy.app')
-            self.buildozer.info('copying it to platform dir')
-            check_call(
-                ('cp', '-a', '/Applications/Kivy.app',
-                join(kivy_app_dir, 'Kivy.app')))
+            self.download_kivy(kivy_app_dir, py_branch)
+
         return
 
     def check_requirements(self):
