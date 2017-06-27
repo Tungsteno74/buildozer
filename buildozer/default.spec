@@ -217,6 +217,23 @@ android.arch = armeabi-v7a
 #ios.codesign.release = %(ios.codesign.debug)s
 
 
+#
+# Snapcraft specific
+#
+
+# change the major version of python used by the app
+snapcraft.python_version = 2
+
+# Kivy version to use
+snapcraft.kivy_version = 1.9.1
+
+# (str) The linux arch to build for, choices: armeabi-v7a, arm64-v8a, x86
+snapcraft.arch = x86
+
+# (list) Permissions
+#snapcraft.permissions = INTERNET
+
+
 [buildozer]
 
 # (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))
